@@ -115,6 +115,14 @@
 #' parameters. In the spatial model 1, \code{spa1.prior} is the mean of an
 #' exponential distribution.
 #'
+#' @param mu1.prior prior distribution of mu1, one of
+#' "flat", "gaussian", "lognormal", "beta" or "exponential"
+#'
+#' @param mu1.prior.params parameters for the prior distribution of mu1,
+#' a vector of parameters as described in the GSL documentation for
+#' 'gsl_ran_(mu1.prior)'
+#' "uniform", "gaussian", "lognormal", "beta" or "exponential"
+#'
 #' @param move.mut,move.pi,move.spa logicals indicating whether the named items
 #' should be estimated ('moved' in the MCMC), or not, all defaulting to TRUE.
 #' \code{move.mut} handles both mutation rates.
@@ -288,6 +296,7 @@ outbreaker <- function(dna=NULL, dates, idx.dna=NULL,
                        burnin=2e4, import.method=c("genetic","full","none"),
                        find.import.n=50,
                        pi.prior1=10, pi.prior2=1, spa1.prior=1,
+                       mu1.prior, mu1.prior.params, 
                        move.mut=TRUE, move.ances=TRUE, move.kappa=TRUE,
                        move.Tinf=TRUE, move.pi=TRUE, move.spa=TRUE,
                        outlier.threshold = 5, max.kappa=10,
@@ -571,6 +580,45 @@ outbreaker <- function(dna=NULL, dates, idx.dna=NULL,
     ##locations <- as.integer(locations)
     locations <- rep(0L, length(dates))
 
+    ## if additional prior distributions are added to prior.c, the parameters they expect must be listed here;
+    ## the names follow gsl convention
+    prior.params <- list(flat = c("lower", "upper"),
+                         normal = c("mu", "sigma"),
+                         lognormal = c("zeta", "sigma"),
+                         beta = c("a", "b"),
+                         exponential = "mu")
+    ## check prior for mu1 (if requested)
+    if (!missing(mu1.prior)) {
+        if (mu1.prior %in% names(prior.params)) {
+            param.names <- prior.params[[mu1.prior]]
+            ## named parameters
+            if (length(param.names) > 0) {
+                if (!missing(mu1.prior.params)) {
+                    if (!is.null(names(mu1.prior.params))) {
+                        common.names <- intersect(param.names, names(mu1.prior.params))
+                        unnamed.params <- setdiff(seq_along(param.names),
+                                                  which(names(mu1.prior.params) %in% common.names))
+                        names(mu1.prior.params)[unnamed.params] <- setdiff(param.names, common.names)
+                    } else {
+                        names(mu1.prior.params)[1:length(param.names)] <- param.names
+                    }
+                    mu1.prior.params <- mu1.prior.params[param.names]
+                } else {
+                    stop("Must give parameters ", param.names, " to ", mu1.prior, " prior distribution")
+                }
+            }
+        } else if (mu1.prior != "")
+        {
+            stop("Unknown distribution in 'mu1.prior': ", mu1.prior)
+        }
+    } else {
+        mu1.prior <- ""
+    }
+
+    if (missing(mu1.prior.params) || length(mu1.prior.params) == 0) {
+        mu1.prior.params <- c(0)
+    }
+    mu1.prior.params <- as.double(mu1.prior.params)
 
     ## create empty output vector for genetic distances ##
     dna.dist <- integer(n.ind*(n.ind-1)/2)
@@ -583,6 +631,7 @@ outbreaker <- function(dna=NULL, dates, idx.dna=NULL,
                ances, init.kappa, n.iter, sample.every, tune.every,
                pi.prior1, pi.prior2, phi.param1, phi.param2, init.mu1, init.gamma,
                init.spa1, init.spa2, spa1.prior, spa2.prior,
+               mu1.prior, mu1.prior.params, length(mu1.prior.params), 
                move.mut, move.ances, move.kappa, move.Tinf,
                move.pi, move.phi, move.spa,
                import.method, find.import.at, burnin, outlier.threshold,
@@ -631,6 +680,7 @@ outbreaker.parallel <- function(n.runs, parallel=TRUE, n.cores=NULL,
                                 init.tree=c("seqTrack","random","star"),
                                 init.kappa=NULL,
                                 init.mu1=NULL, init.mu2=init.mu1, init.spa1=NULL,
+                                mu1.prior, mu1.prior.params, 
                                 n.iter=1e5, sample.every=500, tune.every=500,
                                 burnin=2e4, import.method=c("genetic","full","none"),
                                 find.import.n=50,
@@ -651,7 +701,6 @@ outbreaker.parallel <- function(n.runs, parallel=TRUE, n.cores=NULL,
     res.file.names <- paste("run", 1:n.runs, "-", res.file.name, sep="")
     tune.file.names <- paste("run", 1:n.runs, "-", tune.file.name, sep="")
 
-
     ## HANDLE SEED ##
     if(is.null(seed)){
         seed <- as.integer(runif(n.runs,min=0,max=2e9))
@@ -659,6 +708,12 @@ outbreaker.parallel <- function(n.runs, parallel=TRUE, n.cores=NULL,
         seed <- rep(seed, length=n.runs)
     }
 
+    if (missing(mu1.prior)) {
+        mu1.prior <= ""
+    }
+    if (missing(mu1.prior.params)) {
+        mu1.prior.params <- c(0)
+    }
 
     ## COMPUTATIONS ##
     if(parallel){
@@ -671,8 +726,8 @@ outbreaker.parallel <- function(n.runs, parallel=TRUE, n.cores=NULL,
         ## transfer data onto each child ##
         listArgs <- c("dna", "dates", "idx.dna", "mut.model", "spa.model", "w.dens", "f.dens", "dist.mat", "init.tree", "init.kappa", "n.iter",
                       "sample.every", "tune.every", "burnin", "import.method", "find.import.n", "pi.prior1", "pi.prior2", "init.mu1", "init.mu2",
-                      "init.spa1", "move.mut", "spa1.prior", "move.mut", "move.ances", "move.kappa", "move.Tinf", "move.pi", "move.spa",
-                      "outlier.threshold", "max.kappa", "res.file.names", "tune.file.names", "seed")
+                      "init.spa1", "mu1.prior", "mu1.prior.params", "move.mut", "spa1.prior", "move.mut", "move.ances", "move.kappa", "move.Tinf",
+                      "move.pi", "move.spa", "outlier.threshold", "max.kappa", "res.file.names", "tune.file.names", "seed")
 
         clusterExport(clust, listArgs, envir=environment())
 
@@ -689,6 +744,7 @@ outbreaker.parallel <- function(n.runs, parallel=TRUE, n.cores=NULL,
                                                                   find.import.n=find.import.n,
                                                                   pi.prior1=pi.prior1, pi.prior2=pi.prior2,
                                                                   spa1.prior=spa1.prior,
+                                                                  mu1.prior=mu1.prior, mu1.prior.params=mu1.prior.params, 
                                                                   init.mu1=init.mu1, init.mu2=init.mu2, init.spa1=init.spa1,
                                                                   move.mut=move.mut, move.ances=move.ances, move.kappa=move.kappa,
                                                                   move.Tinf=move.Tinf, move.pi=move.pi, move.spa=move.spa,
@@ -725,6 +781,7 @@ outbreaker.parallel <- function(n.runs, parallel=TRUE, n.cores=NULL,
                                                         find.import.n=find.import.n,
                                                         pi.prior1=pi.prior1, pi.prior2=pi.prior2,
                                                         spa1.prior=spa1.prior,
+                                                        mu1.prior=mu1.prior, mu1.prior.params=mu1.prior.params, 
                                                         init.mu1=init.mu1, init.mu2=init.mu2, init.spa1=init.spa1,
                                                         move.mut=move.mut, move.ances=move.ances, move.kappa=move.kappa,
                                                         move.Tinf=move.Tinf, move.pi=move.pi, move.spa=move.spa,

@@ -242,7 +242,6 @@ param *alloc_param(int n){
 
     /* fill in doubles */
     out->mu1 = 0.0001;
-    out->mu1_prior = 0.0001;
     out->gamma = 1.0;
     out->pi = 1.0;
     out->pi_param1 = 0.0;
@@ -311,6 +310,7 @@ void copy_param(param *in, param *out){
     out->kappa_temp = in->kappa_temp;
     out->mu1 = in->mu1;
     out->mu1_prior = in->mu1_prior;
+    out->mu1_prior_params = in->mu1_prior_params;
     out->gamma = in->gamma;
     out->pi = in->pi;
     out->pi_param1 = in->pi_param1;

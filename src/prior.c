@@ -2,6 +2,25 @@
 #include "structures.h"
 #include "prior.h"
 
+/* if distributions are added here, the parameters they expected
+   must be listed in interface.R */
+double logdist(double x, char* distribution, vec_double* params){
+    double out = 1.;
+    if (!strcmp(distribution, "flat")) {
+        out = gsl_ran_flat_pdf(x, params->values[0], params->values[1]);
+    } else if (!strcmp(distribution, "gaussian")) {
+        out = gsl_ran_gaussian_pdf(x - params->values[0], params->values[1]);
+    } else if (!strcmp(distribution, "lognormal")) {
+        out = gsl_ran_lognormal_pdf(x, params->values[0], params->values[1]);
+    } else if (!strcmp(distribution, "beta")) {
+        out = gsl_ran_beta_pdf(x, params->values[0], params->values[1]);
+    } else if (!strcmp(distribution, "exponential")) {
+        out = gsl_ran_exponential_pdf(x, params->values[0]);
+    }
+    out = log(out);
+    filter_logprob(&out); 
+    return(out);
+}
 
 /* FUNCTION FILTERING LOG-PROB TO AVOID -INF or NaN*/
 void filter_logprob(double *in){
@@ -62,44 +81,48 @@ double logprior_mu1(param *par){
     /* filter_logprob(&out); */
     /* return out; */
     /* UNIFORM VERSION */
-    return 0.0; /* log(1) = 0 */
+    //    return 0.0; /* log(1) = 0 */
+    return logdist(par->mu1, par->mu1_prior, par->mu1_prior_params);
 }
 
 
 
 /* p(gamma) = logN(1,1.25) */
 double logprior_gamma(param *par){
-    double out = gsl_ran_lognormal_pdf(par->gamma, 1.0, 1.25);
-    out = log(out);
-    filter_logprob(&out);
-    return out;
+    vec_double* params = alloc_vec_double(2);
+    params->values[0] = 1.0;
+    params->values[1] = 1.25;
+    return logdist(par->gamma, "lognormal", params);
 }
 
 
 
 /* p(pi) = beta(...,...) */
 double logprior_pi(param *par){
-    double out = gsl_ran_beta_pdf(par->pi, par->pi_param1, par->pi_param2);
-    out = log(out);
-    filter_logprob(&out);
-    return out;
+    vec_double* params = alloc_vec_double(2);
+    params->values[0] = par->pi_param1;
+    params->values[1] = par->pi_param2;
+    return logdist(par->pi, "beta", params);
 }
 
 
 
 /* p(phi) = beta(...,...) */
 double logprior_phi(param *par){
-    double out = gsl_ran_beta_pdf(par->phi, par->phi_param1, par->phi_param2);
-    out = log(out);
-    filter_logprob(&out);
-    return out;
+    vec_double* params = alloc_vec_double(2);
+    params->values[0] = par->phi_param1;
+    params->values[1] = par->phi_param2;
+    return logdist(par->phi, "beta", params);
 }
 
 
 
 /* prior on spatial param 1 */
 double logprior_spa1(param *par){
-    double out=0.0;
+    double out;
+
+    vec_double* params = alloc_vec_double(2);
+    params->values[0] = par->spa_param1_prior;
 
     /* SWITCH ACROSS MODELS */
     switch(par->spa_model){
@@ -111,20 +134,21 @@ double logprior_spa1(param *par){
 	/* (par->spa_param1 is the mean) */
 	/* use an exponential prior for the mean of the exponential distribution */
     case 1:
-	out = log(gsl_ran_exponential_pdf(par->spa_param1, par->spa_param1_prior));
-	break;
+        out = logdist(par->spa_param1, "exponential", params);
+        break;
 
 	/* MODEL 2 */
     case 2:
-      out = log(gsl_ran_exponential_pdf(par->spa_param1, par->spa_param1_prior));
-      break;
+        out = logdist(par->spa_param1, "exponential", params);
+        break;
 
 	/* DEFAULT */
     default:
+        out = 0.0;
+        filter_logprob(&out);
 	break;
     }
 
-    filter_logprob(&out);
     return out;
 }
 
